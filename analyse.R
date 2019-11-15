@@ -1,51 +1,61 @@
-client_id <- "a7c79d85-2d72-4b25-ad86-fc40546e55b7"
-
-sources <- get_sources(client_id = client_id)
-frostr::get_observations()
-frostr::get_available_timeseries()
-frostr::get_element_codetables()
-frostr::get_elements()
-frostr::get_locations()
-frostr::get_observations()
-frostr::get_sources()
-
-# Attach packages
+# Get packages ------------------------------------------------------------
 library(frostr)
 library(dplyr)
+library(purrr)
 library(stringr)
 
-# Set your client ID
-client.id <- "<YOUR CLIENT ID>"
+client.id <- config::get("client_id")
 
-# Find the source ID for Blindern held by MET.NO
+# Select random station per county ----------------------------------------
+
 sources <- get_sources(client_id = client.id)
+county_names <-
+  c(
+    "ROGALAND",
+    "SOGN OG FJORDANE",
+    "NORDLAND",
+    "OPPLAND",
+    "HEDMARK",
+    "BUSKERUD",
+    "TRØNDELAG",
+    "OSLO",
+    "AKERSHUS",
+    "MØRE OG ROMSDAL",
+    "VESTFOLD",
+    "AUST-AGDER",
+    "HORDALAND",
+    "TROMS",
+    "VEST-AGDER",
+    "ØSTFOLD",
+    "TELEMARK",
+    "FINNMARK"
+  )
 
-blindern.id <- sources %>%
-  filter(str_detect(name, "OSLO - BLINDERN") & stationHolders == "MET.NO") %>% 
+
+
+county_ids <- sources %>%
+  filter(county %in% county_names & stationHolders == "MET.NO" & validFrom < 1980) %>% 
+  group_by(county) %>% 
+ slice(1) %>% 
+  ungroup() %>% 
   select(id)
 
 # Find the name of the climate and weather elements of interest
+
 elements <- get_elements(client_id = client.id)
 
-View(elements)
-#> id                            name                                      units
-#> ...                           ...                                       ...
-#> mean(air_temperature P1D)     Mean air temperature (24 h)               degC
-#> sum(precipitation_amount P1D) Precipitation (24 h)                      mm
-#> mean(wind_speed P1D)          Average of wind speed of main obs. (24 h) m/s
-#> ...                           ...                                       ...
-
-element.names <- c("mean(air temperature P1D)",
-                   "sum(precipitation_amount P1D)",
-                   "mean(wind_speed P1D)")
+element.names <- c("mean(wind_speed P1D)")
 
 # Declare the time range for which you want to retrieve observations
-Sys.time()
-reference.time <- "1900-01-01/2019-05-31"
+reference.time <- "2018-01-01/2019-05-31"
 
 # Get the weather observations specified
-observations.df <- get_observations(client_id      = client.id,
-                                    sources        = blindern.id,
+observations.df <- map_df(county_ids, ~ get_observations(client_id      = client.id,
+                                    sources        = .x,
                                     elements       = element.names,
-                                    reference_time = reference.time)
-Sys.time()
+                                    reference_time = reference.time) %>% mutate(year = lubridate::year(referenceTime)) %>%
+                         group_by(year, sourceId) %>% 
+                         summarise(mean_wind = mean(value))
+                         )
+
+observations.df
